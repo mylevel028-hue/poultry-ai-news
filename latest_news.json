@@ -1,1 +1,6 @@
-{"status": "pending", "content": "Initializing initial report..."}
+{
+  "status": "success",
+  "model_used": "gemini-flash-latest",
+  "updated_at": "Hourly Live Analysis",
+  "content": ""
+}
