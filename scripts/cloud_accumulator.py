@@ -4,47 +4,45 @@ import requests
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-def get_available_model():
-    """Dynamically fetches available models from Gemini API and picks the best match."""
+def get_available_models():
+    """Fetches list of available models from Gemini API."""
     list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
     try:
         res = requests.get(list_url)
         if res.status_code == 200:
             models_data = res.json().get("models", [])
-            
-            # Filter models that support content generation
             usable_models = [
                 m["name"].replace("models/", "") 
                 for m in models_data 
                 if "generateContent" in m.get("supportedGenerationMethods", [])
             ]
-            print("Available models on your API key:", usable_models)
-            
-            # Priority order for preferred models
-            preferred = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-2.5-flash"]
-            for pref in preferred:
-                if pref in usable_models:
-                    return pref
-            
-            # Fallback to any usable model found
-            if usable_models:
-                return usable_models[0]
+            print("Available models:", usable_models)
+            return usable_models
     except Exception as e:
-        print(f"Error fetching model list: {e}")
-        
-    # Hardcoded fallback
-    return "gemini-1.5-flash"
+        print(f"Error listing models: {e}")
+    return []
 
 def fetch_and_synthesize():
     if not GEMINI_API_KEY:
         print("Error: GEMINI_API_KEY environment variable is not set.")
         return
 
-    model_name = get_available_model()
-    print(f"Selected Model: {model_name}")
-
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+    available = get_available_models()
     
+    # Priority list of modern, active model candidates
+    candidate_models = [
+        "gemini-flash-latest",
+        "gemini-3.5-flash",
+        "gemini-3.6-flash",
+        "gemini-pro-latest",
+        "gemini-2.5-flash-lite"
+    ]
+
+    # Filter candidates present in the user's available list
+    targets = [m for m in candidate_models if m in available]
+    if not targets:
+        targets = available if available else ["gemini-flash-latest"]
+
     prompt = """
     You are an expert Pakistani Poultry Market Analyst.
     Perform a live web search for:
@@ -62,29 +60,35 @@ def fetch_and_synthesize():
     payload = {
         "contents": [{"parts": [{"text": prompt}]}]
     }
-
     headers = {'Content-Type': 'application/json'}
 
-    try:
-        res = requests.post(url, headers=headers, json=payload)
-        data = res.json()
+    # Attempt execution with active model candidates
+    for model_name in targets:
+        print(f"Attempting generation with model: {model_name}")
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
         
-        if 'candidates' in data and len(data)['candidates'] > 0:
-            text = data['candidates'][0]['content']['parts'][0]['text']
-            report = {
-                "status": "success",
-                "model_used": model_name,
-                "updated_at": "Hourly Live Analysis",
-                "content": text
-            }
-            with open("latest_news.json", "w", encoding="utf-8") as f:
-                json.dump(report, f, indent=2)
-            print("✅ Report updated successfully!")
-        else:
-            print("API Error Response:", json.dumps(data, indent=2))
+        try:
+            res = requests.post(url, headers=headers, json=payload)
+            data = res.json()
             
-    except Exception as e:
-        print(f"Error fetching report: {e}")
+            if 'candidates' in data and len(data['candidates']) > 0:
+                text = data['candidates'][0]['content']['parts'][0]['text']
+                report = {
+                    "status": "success",
+                    "model_used": model_name,
+                    "updated_at": "Hourly Live Analysis",
+                    "content": text
+                }
+                with open("latest_news.json", "w", encoding="utf-8") as f:
+                    json.dump(report, f, indent=2)
+                print(f"✅ Report successfully generated using {model_name}!")
+                return
+            else:
+                print(f"Model {model_name} returned error: {json.dumps(data.get('error', data))}")
+        except Exception as e:
+            print(f"Request failed for {model_name}: {e}")
+
+    print("❌ All model attempts failed.")
 
 if __name__ == "__main__":
     fetch_and_synthesize()
