@@ -5,43 +5,28 @@ import requests
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 def get_available_models():
-    """Fetches list of available models from Gemini API."""
     list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={GEMINI_API_KEY}"
     try:
         res = requests.get(list_url)
         if res.status_code == 200:
             models_data = res.json().get("models", [])
-            usable_models = [
+            return [
                 m["name"].replace("models/", "") 
                 for m in models_data 
                 if "generateContent" in m.get("supportedGenerationMethods", [])
             ]
-            print("Available models:", usable_models)
-            return usable_models
     except Exception as e:
         print(f"Error listing models: {e}")
     return []
 
 def fetch_and_synthesize():
     if not GEMINI_API_KEY:
-        print("Error: GEMINI_API_KEY environment variable is not set.")
+        print("Error: GEMINI_API_KEY is not set.")
         return
 
     available = get_available_models()
-    
-    # Priority list of modern, active model candidates
-    candidate_models = [
-        "gemini-flash-latest",
-        "gemini-3.5-flash",
-        "gemini-3.6-flash",
-        "gemini-pro-latest",
-        "gemini-2.5-flash-lite"
-    ]
-
-    # Filter candidates present in the user's available list
-    targets = [m for m in candidate_models if m in available]
-    if not targets:
-        targets = available if available else ["gemini-flash-latest"]
+    candidate_models = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-1.5-flash"]
+    targets = [m for m in candidate_models if m in available] or (available if available else ["gemini-flash-latest"])
 
     prompt = """
     You are an expert Pakistani Poultry Market Analyst.
@@ -57,12 +42,13 @@ def fetch_and_synthesize():
     **⚠️ Risk / Market Warning**
     """
 
+    # Added Google Search tool for live web search
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
+        "contents": [{"parts": [{"text": prompt}]}],
+        "tools": [{"google_search": {}}]
     }
     headers = {'Content-Type': 'application/json'}
 
-    # Attempt execution with active model candidates
     for model_name in targets:
         print(f"Attempting generation with model: {model_name}")
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
@@ -84,11 +70,9 @@ def fetch_and_synthesize():
                 print(f"✅ Report successfully generated using {model_name}!")
                 return
             else:
-                print(f"Model {model_name} returned error: {json.dumps(data.get('error', data))}")
+                print(f"Error details: {json.dumps(data.get('error', data))}")
         except Exception as e:
             print(f"Request failed for {model_name}: {e}")
-
-    print("❌ All model attempts failed.")
 
 if __name__ == "__main__":
     fetch_and_synthesize()
